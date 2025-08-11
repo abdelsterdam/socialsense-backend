@@ -46,15 +46,19 @@ app.get('/api/analytics', (req, res) => {
   res.json(analytics)
 })
 
+// ---------- AI Chat Endpoint ----------
 app.post('/api/ai/chat', async (req, res) => {
   const userMessage = req.body?.message || ''
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ reply: 'GEMINI_API_KEY ontbreekt op de server.' })
+  const API_KEY = process.env.GEMINI_API_KEY
+
+  if (!API_KEY) {
+    return res.status(500).json({ reply: 'Server mist GEMINI_API_KEY. Zet deze in Railway → Variables.' })
   }
 
   try {
-    // In Node 18+ is fetch global – geen node-fetch nodig
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`
+    const model = 'gemini-1.5-flash' // gratis & snel
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`
+
     const body = {
       contents: [
         {
@@ -74,10 +78,11 @@ app.post('/api/ai/chat', async (req, res) => {
 
     const data = await r.json()
 
-    // Eventuele API-fout netjes afvangen
     if (!r.ok) {
-      console.error('Gemini API error:', data)
-      return res.status(502).json({ reply: 'AI-service gaf een fout terug. Probeer later opnieuw.' })
+      console.error('Gemini API error status:', r.status, r.statusText)
+      console.error('Gemini API error body:', data)
+      const msg = data?.error?.message || 'AI-service gaf een fout terug.'
+      return res.status(502).json({ reply: msg })
     }
 
     const reply =
