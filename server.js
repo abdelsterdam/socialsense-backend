@@ -37,35 +37,43 @@ const analytics = {
   ]
 }
 
-// ---------- Endpoints ----------
-app.get('/api/summary', (req, res) => {
-  res.json(summary)
+// ---------- Health/diag ----------
+app.get('/api/health', (_, res) => res.json({ ok: true }))
+app.get('/api/ai/diag', async (_req, res) => {
+  const API_KEY = process.env.GEMINI_API_KEY
+  if (!API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY ontbreekt' })
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Zeg: test' }] }]
+      })
+    })
+    const data = await r.json()
+    if (!r.ok) return res.status(502).json({ status: r.status, error: data })
+    res.json({ ok: true, sample: data?.candidates?.[0]?.content?.parts?.[0]?.text || null })
+  } catch (e) {
+    res.status(500).json({ error: String(e) })
+  }
 })
 
-app.get('/api/analytics', (req, res) => {
-  res.json(analytics)
-})
+// ---------- API endpoints ----------
+app.get('/api/summary', (_req, res) => res.json(summary))
+app.get('/api/analytics', (_req, res) => res.json(analytics))
 
-// ---------- AI Chat Endpoint ----------
 app.post('/api/ai/chat', async (req, res) => {
   const userMessage = req.body?.message || ''
   const API_KEY = process.env.GEMINI_API_KEY
-
-  if (!API_KEY) {
-    return res.status(500).json({ reply: 'Server mist GEMINI_API_KEY. Zet deze in Railway → Variables.' })
-  }
+  if (!API_KEY) return res.status(500).json({ reply: 'Server mist GEMINI_API_KEY.' })
 
   try {
-    const model = 'gemini-1.5-flash' // gratis & snel
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`
-
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`
     const body = {
       contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: `Je bent een vriendelijke social media coach. Antwoord in het Nederlands.\n\nVraag: ${userMessage}` }
-          ]
+        { role: 'user',
+          parts: [{ text: `Je bent een vriendelijke social media coach. Antwoord in het Nederlands.\n\nVraag: ${userMessage}` }]
         }
       ]
     }
@@ -75,19 +83,16 @@ app.post('/api/ai/chat', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-
     const data = await r.json()
 
     if (!r.ok) {
-      console.error('Gemini API error status:', r.status, r.statusText)
-      console.error('Gemini API error body:', data)
+      console.error('Gemini API error', r.status, r.statusText, data)
       const msg = data?.error?.message || 'AI-service gaf een fout terug.'
       return res.status(502).json({ reply: msg })
     }
 
-    const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
-      'Geen antwoord ontvangen van de AI.'
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      || 'Geen antwoord ontvangen van de AI.'
     res.json({ reply })
   } catch (err) {
     console.error('Gemini fetch failed:', err)
